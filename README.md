@@ -1,7 +1,8 @@
-# qiita-ena-manifests
+# qiita-cq-analysis
 
 Study accession lists for batch ENA imports into [Qiita](https://github.com/the-miint/Qiita)
-(`POST /api/v1/ena-import-batch`), sized from the ENA portal filereport.
+(`POST /api/v1/ena-import-batch`), sized from the ENA portal filereport, plus the scripts used to run the
+import pilot and process the imported reads.
 
 ## Lists
 
@@ -39,6 +40,7 @@ for the import pilot and for processing the imported reads outside Qiita. Paths 
 |---|---|
 | `pilot/watch.sh <batch_idx>`, `pilot/progress.sh` | status of an ENA import batch and per-ticket download progress |
 | `pilot/portal-watch.sh` | waits for the ENA Portal API to answer, then submits a study list once |
+| `pilot/wave-chain.sh <list>…` | submits study lists one after another, each once the previous one's downloads finish |
 | `pilot/redrive-seq.sh <idx>…` | redrives failed download tickets one at a time, stopping on a failure |
 | `pilot/verify_counts.py PRJ…` | compares stored read counts (staging and lake) with ENA `read_count` |
 | `pilot/share-refresh.sh` | rebuilds the shared read manifest and permissions, and copies `pipeline/` and [`docs/reads-share.md`](docs/reads-share.md) into the share |
