@@ -45,11 +45,16 @@ for the import pilot and for processing the imported reads outside Qiita. Paths 
 | `pilot/redrive-seq.sh <idx>…` | redrives failed download tickets one at a time, stopping on a failure |
 | `pilot/verify_counts.py PRJ…` | compares stored read counts (staging and lake) with ENA `read_count` |
 | `pilot/share-refresh.sh` | rebuilds the shared read manifest and permissions, and copies `pipeline/` and [`docs/reads-share.md`](docs/reads-share.md) into the share |
+| `pipeline/submit_profile.sh <out> PRJ…` | **pilot profiling:** one Slurm job running `miint_profile.py` |
+| `pipeline/miint_profile.py <out> PRJ…` | miint `sylph_profile` straight from each run's parquet (no FASTQ, no host depletion) vs GTDB r220; resumable; writes `profile.tsv` and `species.tsv` |
 | `pipeline/submit_runs.sh <out> PRJ…` | Slurm array over a study's metagenomic runs → `deplete_sketch.sh` |
 | `pipeline/deplete_sketch.sh` | parquet → miint FASTQ stream → deacon (panhuman-1) → sylph sketch |
 | `pipeline/profile.sh <out>` | sylph profile vs GTDB r232, then sylph-tax |
 | `pipeline/amplicon_check.py PRJ…` | per-study 16S region, primers, trim and multiplexing → `amplicon` workflow args |
 | `pipeline/jupyter.sbatch`, `pipeline/qiita_reads.ipynb` | JupyterLab on the `jupyter` partition |
 
-Databases (panhuman-1, the GTDB r232 sylph db, sylph-tax) are expected in `$QDEV_SHARE/db/`; the conda env
+miint embeds a sylph 0.9 fork, so `miint_profile.py` needs the GTDB r220 `.syldb` (sylph 1.0's r232 `.syl2db` does not load).
+The deacon + sylph-CLI scripts stay for benchmarking host-depleted against raw profiles.
+
+Databases (panhuman-1, the GTDB r220 `.syldb` and r232 `.syl2db` sylph dbs, sylph-tax) are expected in `$QDEV_SHARE/db/`; the conda env
 (DuckDB 1.5.4, deacon, sylph, sylph-tax, JupyterLab) in `$QDEV_CONDA`.
