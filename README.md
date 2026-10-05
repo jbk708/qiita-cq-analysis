@@ -41,6 +41,7 @@ for the import pilot and for processing the imported reads outside Qiita. Paths 
 | `pilot/watch.sh <batch_idx>`, `pilot/progress.sh` | status of an ENA import batch and per-ticket download progress |
 | `pilot/portal-watch.sh` | waits for the ENA Portal API to answer, then submits a study list once |
 | `pilot/wave-chain.sh <list>…` | submits study lists one after another, each once the previous one's downloads finish |
+| `pilot/auto-redrive.sh <first_batch>` | redrives tickets that failed on a transient ENA error, in rounds (max 6 each) |
 | `pilot/redrive-seq.sh <idx>…` | redrives failed download tickets one at a time, stopping on a failure |
 | `pilot/verify_counts.py PRJ…` | compares stored read counts (staging and lake) with ENA `read_count` |
 | `pilot/share-refresh.sh` | rebuilds the shared read manifest and permissions, and copies `pipeline/` and [`docs/reads-share.md`](docs/reads-share.md) into the share |
