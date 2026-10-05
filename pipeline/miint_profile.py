@@ -1,7 +1,7 @@
 """Profile metagenomic runs with miint sylph_profile straight from their Qiita parquet (no FASTQ, no host depletion).
 
 miint embeds a sylph 0.9 fork, so the database must be a .syldb (GTDB r220), not sylph 1.0's .syl2db.
-Runs already in <out_dir>/profile.tsv are skipped. Writes profile.tsv (genome level, with lineage) and
+Runs already in <out_dir>/profile.tsv, or in no_hits.tsv (no genome passed), are skipped. Writes profile.tsv (genome level, with lineage) and
 species.tsv (run, species, lineage, abundances).
 Usage: miint_profile.py <out_dir> PRJ... [--batch 10] [--threads 16] [--memory 48GB] [--estimate-unknown]
 """
@@ -36,6 +36,9 @@ runs = c.execute(f"""SELECT study_accession, run_accession, path FROM read_csv('
 done = set()
 if os.path.exists(prof_path):
     done = {r for (r,) in c.execute(f"SELECT DISTINCT run FROM read_csv('{prof_path}', delim='\t', header=true)").fetchall()}
+nohit_path = f"{a.out}/no_hits.tsv"
+if os.path.exists(nohit_path):
+    done |= {line.split("\t")[1].strip() for line in open(nohit_path) if line.strip()}
 todo = [r for r in runs if r[1] not in done]
 print(f"{len(runs)} metagenomic runs, {len(done)} already profiled, {len(todo)} to do", flush=True)
 
@@ -55,6 +58,8 @@ for i in range(0, len(todo), a.batch):
     c.execute(f"COPY prof TO '{a.out}/.batch.tsv' (DELIMITER '\t', HEADER {str(header).lower()})")
     with open(prof_path, "a") as out, open(f"{a.out}/.batch.tsv") as b:
         out.write(b.read())
+    with open(nohit_path, "a") as nh:
+        nh.writelines(f"{s}\t{r}\n" for s, r, _ in batch if r in missing)
     print(f"batch {i // a.batch + 1}: {len(batch)} runs, {c.execute('SELECT count(*) FROM prof').fetchone()[0]} genome rows"
           + (f"; no genomes passed for {sorted(missing)}" if missing else ""), flush=True)
 os.remove(f"{a.out}/.batch.tsv") if os.path.exists(f"{a.out}/.batch.tsv") else None

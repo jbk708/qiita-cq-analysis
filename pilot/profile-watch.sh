@@ -35,6 +35,9 @@ listed = {s for (s,) in c.execute("SELECT DISTINCT study_accession FROM m").fetc
 done = set()
 if os.path.exists(prof):
     done = {r for (r,) in c.execute(f"SELECT DISTINCT run FROM read_csv('{prof}', delim='\t', header=true)").fetchall()}
+nohits = os.path.join(os.path.dirname(prof), "no_hits.tsv")
+if os.path.exists(nohits):
+    done |= {line.split("\t")[1].strip() for line in open(nohits) if line.strip()}
 todo = sorted({s for s, r in c.execute("SELECT study_accession, run_accession FROM m WHERE prep_protocol LIKE '%metagenomics' "
                                         "AND study_accession IN (SELECT unnest($s))", {"s": studies}).fetchall() if r not in done})
 unlisted = [s for s in studies if s not in listed]
