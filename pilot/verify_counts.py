@@ -4,8 +4,8 @@ import sys
 
 import duckdb
 
-root = os.environ.get("QDEV_ROOT", f"/ddn_scratch/{os.environ['USER']}/qiita-dev")
-share = os.environ.get("QDEV_SHARE", f"/ddn_scratch/{os.environ['USER']}/qiita-dev-share")
+root = os.environ.get("QDEV_ROOT", f"/ddn_scratch/{os.environ['USER']}/qiita-pilot/qiita-dev")
+share = os.environ.get("QDEV_SHARE", f"/ddn_scratch/{os.environ['USER']}/qiita-pilot/qiita-dev-share")
 studies = sys.argv[1:] or sys.exit(__doc__)
 
 c = duckdb.connect(config={"allow_unsigned_extensions": "true", "extension_directory": f"{root}/duckdb-ext",

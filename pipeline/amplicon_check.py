@@ -13,7 +13,7 @@ import duckdb
 import pandas as pd
 
 MIINT_REPO = "https://ftp.microbio.me/pub/miint"
-MANIFEST = os.path.join(os.environ.get("QDEV_SHARE", f"/ddn_scratch/{os.environ.get('USER')}/qiita-dev-share"), "manifest.tsv")
+MANIFEST = os.path.join(os.environ.get("QDEV_SHARE", f"/ddn_scratch/{os.environ.get('USER')}/qiita-pilot/qiita-dev-share"), "manifest.tsv")
 
 # region -> (forward primer, reverse primer). Several share 515F/341F; the reverse primer on R2
 # tells them apart, and single-end runs report every region their forward primer fits.

@@ -9,7 +9,7 @@
 #SBATCH --mem=32G
 #SBATCH -t 08:00:00
 #SBATCH -o jupyter-%j.log
-ENV=${QDEV_CONDA:-/ddn_scratch/$USER/conda-envs/qiita-reads}
+ENV=${QDEV_CONDA:-/ddn_scratch/$USER/qiita-pilot/conda-envs/qiita-reads}
 PORT=$(shuf -i 20000-29999 -n 1)
 echo "node: $(hostname)  port: $PORT"
 echo "tunnel: ssh -N -L 8888:$(hostname):$PORT barnacle"
