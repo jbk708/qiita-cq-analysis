@@ -43,6 +43,7 @@ for the import pilot and for processing the imported reads outside Qiita. Paths 
 | `pilot/wave-chain.sh <list>…` | submits study lists one after another, each once the previous one's downloads finish |
 | `pilot/auto-redrive.sh <first_batch>` | redrives tickets that failed on a transient ENA error, in rounds (max 6 each) |
 | `pilot/profile-watch.sh <out>` | rolling profiling: when a study's downloads all complete, submits its new metagenomic runs to `submit_profile.sh` |
+| `pilot/amplicon-run.sh <plan.tsv>` | runs the Rapid 16S `amplicon` workflow pool by pool from a plan file |
 | `pilot/redrive-seq.sh <idx>…` | redrives failed download tickets one at a time, stopping on a failure |
 | `pilot/verify_counts.py PRJ…` | compares stored read counts (staging and lake) with ENA `read_count` |
 | `pilot/share-refresh.sh` | rebuilds the shared read manifest and permissions, and copies `pipeline/` and [`docs/reads-share.md`](docs/reads-share.md) into the share |
@@ -51,6 +52,7 @@ for the import pilot and for processing the imported reads outside Qiita. Paths 
 | `pipeline/submit_runs.sh <out> PRJ…` | Slurm array over a study's metagenomic runs → `deplete_sketch.sh` |
 | `pipeline/deplete_sketch.sh` | parquet → miint FASTQ stream → deacon (panhuman-1) → sylph sketch |
 | `pipeline/profile.sh <out>` | sylph profile vs GTDB r232, then sylph-tax |
+| `pipeline/export_tables.py <out> …` | combined metagenomic and 16S V4 feature tables (TSV + BIOM) and per-sample metadata, read from the dev stack |
 | `pipeline/amplicon_check.py PRJ…` | per-study 16S region, primers, trim and multiplexing → `amplicon` workflow args |
 | `pipeline/jupyter.sbatch`, `pipeline/qiita_reads.ipynb` | JupyterLab on the `jupyter` partition |
 
