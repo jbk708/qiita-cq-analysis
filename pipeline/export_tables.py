@@ -7,7 +7,7 @@ Postgres is reachable (srun into the stack job). Sample IDs are ENA run accessio
   16s_v4_feature_table.{tsv,biom}  ASV x run, Rapid 16S (amplicon workflow) counts; ASVs keyed by sequence
   16s_v4_feature_taxonomy.tsv      ASV, length, GG2 2024.09 exact-match taxonomy (blank when no match)
   metag_metadata.tsv   one row per profiled run: run/study fields plus the harmonized sample metadata
-  16s_metadata.tsv     the same for every amplicon run, with in_v4_feature_table and the region check
+  16s_metadata.tsv     the same for every amplicon run with stored reads, with in_v4_feature_table and the region check
 Usage: export_tables.py <out_dir> --species <species.tsv> --v4-studies PRJ,... [--amplicon-check study.runs.tsv]
 """
 import argparse
@@ -21,6 +21,8 @@ p.add_argument("out")
 p.add_argument("--species", required=True)
 p.add_argument("--v4-studies", required=True, help="comma-separated study accessions processed with Rapid 16S")
 p.add_argument("--amplicon-check", help="amplicon_check.py per-run output, adds region/primer/trim to 16s_metadata")
+p.add_argument("--manifest", default=os.path.join(os.environ.get("QDEV_SHARE", f"/ddn_scratch/{os.environ['USER']}/qiita-pilot/qiita-dev-share"), "manifest.tsv"),
+               help="share manifest; 16s_metadata keeps only runs with stored reads")
 p.add_argument("--gg2-taxonomy", default="/databases/gg/2024.09/2024.09.taxonomy.asv.tsv.gz")
 p.add_argument("--pg", default="dbname=qiita host=localhost port=55432")
 p.add_argument("--lake", default="dbname=qiita_ducklake host=localhost port=55432")
@@ -83,12 +85,12 @@ def write_metadata(path, samples_sql, extra_join="", extra_cols=""):
 
 
 # metagenomics
-c.execute(f"CREATE TABLE metag AS SELECT run AS sample_name, species, any_value(lineage) lineage, sum(taxonomic_abundance) value "
+c.execute(f"CREATE TABLE metag AS SELECT run AS sample_name, species, any_value(lineage) lineage, sum(taxonomic_abundance) AS abundance "
           f"FROM read_csv('{a.species}', delim='\t', header=true) GROUP BY ALL")
-c.execute(f"""COPY (PIVOT (SELECT species AS feature_id, lineage, sample_name, value FROM metag)
-                   ON sample_name USING sum(value) GROUP BY feature_id, lineage ORDER BY feature_id)
+c.execute(f"""COPY (PIVOT (SELECT species AS feature_id, lineage, sample_name, abundance FROM metag)
+                   ON sample_name USING sum(abundance) GROUP BY feature_id, lineage ORDER BY feature_id)
               TO '{a.out}/metag_feature_table.tsv' (DELIMITER '\t', HEADER)""")
-c.execute(f"COPY (SELECT species AS feature_id, sample_name AS sample_id, value FROM metag) "
+c.execute(f"COPY (SELECT species AS feature_id, sample_name AS sample_id, abundance AS value FROM metag) "
           f"TO '{a.out}/metag_feature_table.biom' (FORMAT BIOM, COMPRESSION 'gzip', ID 'qiita-pilot-metag-sylph-gtdb-r220')")
 print("metag_feature_table:", c.execute("SELECT count(DISTINCT species), count(DISTINCT sample_name) FROM metag").fetchone(), "(species, samples)")
 write_metadata(f"{a.out}/metag_metadata.tsv", "SELECT * FROM runs WHERE sample_name IN (SELECT sample_name FROM metag)")
@@ -123,4 +125,5 @@ if a.amplicon_check:
     extra_cols = ", chk.* EXCLUDE (sample_name)"
 write_metadata(f"{a.out}/16s_metadata.tsv",
                "SELECT *, sample_name IN (SELECT sample_name FROM v4) AS in_v4_feature_table FROM runs "
-               "WHERE prep_protocol LIKE '%amplicon'", extra, extra_cols)
+               f"WHERE prep_protocol LIKE '%amplicon' AND sample_name IN "
+               f"(SELECT run_accession FROM read_csv('{a.manifest}', delim='\t', header=true))", extra, extra_cols)
