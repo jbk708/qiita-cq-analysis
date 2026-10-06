@@ -9,7 +9,7 @@ log() { echo "$(date "+%F %T") $*" >> $LOG; }
 state() { $QDEV_CLI ticket status "$1" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('state','?'), (d.get('failure_reason') or '')[:200])" 2>/dev/null; }
 echo $$ > $QDEV_ROOT/logs/amplicon-run.pid
 log "started: $PLAN (sortmerna_reference_idx=$REF)"
-grep -v '^#' "$PLAN" | while IFS=$'\t' read -r study pool run trim orient primer; do
+while IFS=$'\t' read -r study pool run trim orient primer <&3; do   # fd 3: srun below would swallow stdin
   [ -n "$pool" ] || continue
   scope="{\"kind\":\"sequenced_pool\",\"sequenced_pool_idx\":$pool,\"sequencing_run_idx\":$run}"
   ctx="{\"sortmerna_reference_idx\":$REF,\"trim\":$trim,\"orient_primer\":$orient${primer:+,\"primer\":\"$primer\"}}"
@@ -25,5 +25,5 @@ grep -v '^#' "$PLAN" | while IFS=$'\t' read -r study pool run trim orient primer
       *) sleep 120;;
     esac
   done
-done
+done 3< <(grep -v '^#' "$PLAN")
 log "plan done"
