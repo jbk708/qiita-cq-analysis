@@ -136,6 +136,7 @@ def main():
     p.add_argument("--reads", type=int, default=20000)
     p.add_argument("--out")
     p.add_argument("--memory", default="4GB")
+    p.add_argument("--max-runs-per-study", type=int, default=0, help="check at most N runs per study (0 = all)")
     a = p.parse_args()
 
     con = duckdb.connect(config={"allow_unsigned_extensions": "true", "memory_limit": a.memory})
@@ -144,6 +145,9 @@ def main():
         "SELECT study_accession, run_accession, prep_protocol, platform, path "
         "FROM read_csv($m, delim='\t', header=true) WHERE study_accession IN (SELECT unnest($s)) "
         "ORDER BY 1, 2", {"m": a.manifest, "s": a.studies}).fetchall()
+    if a.max_runs_per_study:
+        per = {}
+        runs = [r for r in runs if per.setdefault(r[0], []).append(r) or len(per[r[0]]) <= a.max_runs_per_study]
     missing = set(a.studies) - {r[0] for r in runs}
     if missing:
         sys.exit(f"not in manifest (not imported yet?): {' '.join(sorted(missing))}")
