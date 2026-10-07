@@ -47,7 +47,7 @@ c.executemany("INSERT INTO files VALUES (?,?,?,?,?)", rows)
 c.execute(f"""COPY (SELECT r.*, f.layout, f.read_count, f.parquet_bytes, f.path FROM runs r JOIN files f USING (prep_sample_idx)
   ORDER BY study_accession, run_accession) TO '{sh}/manifest.tsv' (DELIMITER '\t', HEADER)""")
 c.execute(f"""COPY (SELECT s.column0::BIGINT qiita_study_idx, s.column1 study_accession, s.column2 secondary_study_accession,
-  s.column3 study_title, s.column4 default_tier, s.column5 access, count(m.run_accession) runs_with_reads
+  s.column3 study_title, s.column4 default_tier, s.column5 access_grants, count(m.run_accession) runs_with_reads
   FROM read_csv('{sh}/.studies.tsv', delim='\t', header=false, all_varchar=true) s
   LEFT JOIN read_csv('{sh}/manifest.tsv', delim='\t', header=true) m ON m.qiita_study_idx = s.column0::BIGINT
   GROUP BY ALL ORDER BY 1) TO '{sh}/studies.tsv' (DELIMITER '\t', HEADER)""")
