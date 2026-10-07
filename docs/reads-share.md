@@ -8,6 +8,9 @@ Public ENA data. Read-only for the owner's Unix group. The set grows as imports 
   `platform`, `layout` (SINGLE/PAIRED), `read_count` (equals ENA's), `parquet_bytes`, `path`.
 - Each `path` is a Parquet file with columns `sequence_idx`, `read_id`, `sequence1`, `qual1`,
   `sequence2`, `qual2` (the `*2` columns are NULL for single-end runs).
+- `studies.tsv` — one row per Qiita study: `qiita_study_idx` (open it as `GET /api/v1/study/{idx}`),
+  accessions, title, `default_tier`, `access` (`email:tier` grants), `runs_with_reads`. Qiita has no
+  list-studies endpoint yet, so this is the index.
 
 ## pandas
 
