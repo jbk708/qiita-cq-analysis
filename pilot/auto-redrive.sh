@@ -19,7 +19,8 @@ while :; do
     SELECT DISTINCT w.work_ticket_idx FROM qiita.ena_import_batch_item i
     JOIN qiita.work_ticket w ON w.work_ticket_idx = ANY(i.download_work_ticket_idxs)
     WHERE i.batch_idx >= $FIRST AND w.state = 'failed'
-      AND (w.failure_reason LIKE '%Could not connect%' OR w.failure_reason LIKE '%Could not set lock%')
+      AND (w.failure_reason LIKE '%Could not connect%' OR w.failure_reason LIKE '%Could not set lock%'
+           OR w.failure_reason LIKE '%data is missing or partial%')
     ORDER BY 1") || { sleep 300; continue; }
   for t in $tickets; do
     n=$(grep -c "^$t$" $ROUNDS)
