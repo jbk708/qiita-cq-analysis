@@ -4,3 +4,5 @@ target_candidates.tsv
 comment.md
 __pycache__/
 *.csv
+*.manifest.tsv
+*.audit.jsonl
