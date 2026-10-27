@@ -1,7 +1,6 @@
-"""Strict-mode ENA Portal shim and Range file server for local FASTQs listed in a manifest.
+"""Strict-mode ENA Portal shim and Range file server for the local FASTQs in a manifest.
 
-Serves `/portal/api/search` (read_run, tsv) and `/f/<run>/<mate>/<basename>` so miint's
-`read_ena_sequences` can fetch files that ENA hosts under other names. Stdlib only.
+Serves `/portal/api/search` (read_run, tsv) and `/f/<run>/<mate>/<basename>` for miint's `read_ena_sequences`.
 """
 
 from __future__ import annotations
