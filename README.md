@@ -61,3 +61,15 @@ The deacon + sylph-CLI scripts stay for benchmarking host-depleted against raw p
 
 Databases (panhuman-1, the GTDB r220 `.syldb` and r232 `.syl2db` sylph dbs, sylph-tax) are expected in `$QDEV_SHARE/db/`; the conda env
 (DuckDB 1.5.4, deacon, sylph, sylph-tax, JupyterLab) in `$QDEV_CONDA`.
+
+## ENA Portal shim
+
+Serves local FASTQs to Qiita's ENA import for runs ENA stores under other names; see [`docs/ena-shim.md`](docs/ena-shim.md).
+
+| Script | Does |
+|---|---|
+| `shim/build_manifest.py` | matches a study's ENA `submitted_bytes` to local `per_sample_FASTQ` files and writes the manifest |
+| `shim/ena_shim.py` | strict Portal `read_run` shim plus a Range-capable file server, with an audit log |
+| `shim/ena-shim.sbatch <manifest>` | runs the shim as a Slurm job and writes `portal.env` and `portal.runs` |
+| `shim/native-python.sh`, `shim/scope_check.py` | `SLURM_NATIVE_PYTHON` wrapper that points `ingest_ena_reads` jobs at the shim when all their runs are in the manifest |
+| `shim/miint_probe.py` | fetches one run through Qiita's own `_stage_run_reads` and prints the outcome as JSON |
