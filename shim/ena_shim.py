@@ -1,6 +1,7 @@
-"""Strict-mode ENA Portal shim and Range file server for the local FASTQs in a manifest.
+"""ENA Portal shim and Range file server for the local FASTQs in a manifest.
 
 Serves `/portal/api/search` (read_run, tsv) and `/f/<run>/<mate>/<basename>` for miint's `read_ena_sequences`.
+Strict mode refuses runs not in the manifest; proxy mode passes ENA's own rows through for them.
 """
 
 from __future__ import annotations
@@ -16,7 +17,8 @@ import threading
 import time
 from email.utils import formatdate
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlencode, urlsplit
+from urllib.request import urlopen
 
 REQUIRED = ("run_accession study_accession sample_accession experiment_accession library_layout "
             "r1_path r1_bytes r1_md5 r2_path r2_bytes r2_md5").split()
@@ -145,7 +147,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve(self, head):
         t0 = time.monotonic()
-        self._status, self._sent, self._full = 0, 0, False
+        self._status, self._sent, self._full, self._proxied = 0, 0, False, 0
         try:
             url = urlsplit(self.path)
             if url.path == "/healthz":
@@ -163,7 +165,7 @@ class Handler(BaseHTTPRequestHandler):
                 "time": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "client": self.client_address[0],
                 "method": self.command, "path": self.path, "range": self.headers.get("Range"),
                 "status": self._status, "bytes": self._sent, "duration": round(time.monotonic() - t0, 4),
-                **({"full_get": True} if self._full else {})})
+                **({"full_get": True} if self._full else {}), **({"proxied": self._proxied} if self._proxied else {})})
 
     def _head(self, status, headers):
         self._status = status
@@ -200,14 +202,38 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError(f"unsupported fields {bad or 'none given'}")
             accs = parse_accessions(qs.get("query", [""])[0])
             unmapped = [a for a in accs if a not in self.server.runs]
-            if unmapped:
+            if unmapped and not self.server.ena_portal:
                 raise ValueError(f"run(s) not in the shim manifest: {', '.join(unmapped)}")
         except ValueError as e:
             return self._text(422, f"shim: {e}", head)
+        proxied = {}
+        if unmapped:
+            try:
+                proxied = self._ena_rows(unmapped, qs["fields"][0])
+            except (OSError, ValueError) as e:
+                return self._text(502, f"shim: ENA proxy: {e}", head)
+            self._proxied = len(unmapped)
         host = self.headers.get("Host") or f"{socket.gethostname()}:{self.server.server_address[1]}"
         lines = ["\t".join(fields)]
-        lines += ["\t".join(self._value(self.server.runs[a], f, host) for f in fields) for a in accs]
+        lines += [proxied[a] if a in proxied else "\t".join(self._value(self.server.runs[a], f, host) for f in fields)
+                  for a in accs]
         self._text(200, "\n".join(lines) + "\n", head, "text/tab-separated-values; charset=utf-8")
+
+    def _ena_rows(self, accs, fields):
+        """ENA's own TSV line for each run, verbatim; raises naming any run ENA didn't return."""
+        query = "run_accession IN (" + ",".join(f'"{a}"' for a in accs) + ")"
+        params = urlencode({"result": "read_run", "query": query, "fields": fields, "format": "tsv", "limit": 0})
+        with urlopen(f"{self.server.ena_portal}/search?{params}", timeout=120) as r:
+            text = r.read().decode()
+        lines = text.rstrip("\n").split("\n")
+        if lines[0] != fields.replace(",", "\t"):
+            raise ValueError(f"unexpected header {lines[0][:200]!r}")
+        col = fields.split(",").index("run_accession")
+        rows = {ln.split("\t")[col]: ln for ln in lines[1:]}
+        missing = [a for a in accs if a not in rows]
+        if missing:
+            raise ValueError(f"ENA has no run(s) {', '.join(missing)}")
+        return rows
 
     @staticmethod
     def _value(run, field, host):
@@ -259,9 +285,9 @@ class Server(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 64
 
-    def __init__(self, addr, runs, audit_path, mount_root):
+    def __init__(self, addr, runs, audit_path, mount_root, ena_portal=None):
         super().__init__(addr, Handler)
-        self.runs, self.mount_root = runs, mount_root
+        self.runs, self.mount_root, self.ena_portal = runs, mount_root, ena_portal
         self._audit_fh = open(audit_path, "a", buffering=1)
         self._audit_lock = threading.Lock()
 
@@ -274,8 +300,8 @@ class Server(ThreadingHTTPServer):
         self._audit_fh.close()
 
 
-def make_server(runs, audit_path, mount_root, bind="127.0.0.1", port=0):
-    return Server((bind, port), runs, audit_path, mount_root)
+def make_server(runs, audit_path, mount_root, bind="127.0.0.1", port=0, ena_portal=None):
+    return Server((bind, port), runs, audit_path, mount_root, ena_portal)
 
 
 def _write_atomic(path, text):
@@ -289,6 +315,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--mode", choices=("strict", "proxy"), default="strict")
+    ap.add_argument("--ena-portal", default="https://www.ebi.ac.uk/ena/portal/api", help="proxy mode's upstream")
     ap.add_argument("--mount-root", default="/qmounts/qiita_data", help="stat'ed by /healthz")
     ap.add_argument("--audit", default="ena-shim.audit.jsonl")
     ap.add_argument("--bind", default="0.0.0.0")
@@ -296,22 +323,20 @@ def main(argv=None):
     ap.add_argument("--env-out", help="write MIINT_ENA_PORTAL_URL_BASE=... here once listening")
     ap.add_argument("--runs-out", help="write the manifest's run accessions here, one per line")
     a = ap.parse_args(argv)
-    if a.mode == "proxy":
-        print("ena_shim: proxy mode is not implemented", file=sys.stderr)
-        return 2
     try:
         runs = load_manifest(a.manifest)
     except ManifestError as e:
         print(f"ena_shim: refusing to start:\n{e}", file=sys.stderr)
         return 2
-    server = make_server(runs, a.audit, a.mount_root, a.bind, a.port)
+    server = make_server(runs, a.audit, a.mount_root, a.bind, a.port, a.ena_portal if a.mode == "proxy" else None)
     port = server.server_address[1]
     # Left in place on exit: a stale pointer fails jobs loudly, deleting it would route them to real ENA.
     if a.runs_out:
         _write_atomic(a.runs_out, "".join(f"{r}\n" for r in sorted(runs)))
     if a.env_out:
         host = socket.gethostname().split(".")[0]
-        _write_atomic(a.env_out, f"MIINT_ENA_PORTAL_URL_BASE=http://{host}:{port}/portal/api\n")
+        mode = "ENA_SHIM_MODE=proxy\n" if a.mode == "proxy" else ""
+        _write_atomic(a.env_out, f"MIINT_ENA_PORTAL_URL_BASE=http://{host}:{port}/portal/api\n{mode}")
     print(f"ena_shim: serving {len(runs)} runs on port {port}", flush=True)
     try:
         server.serve_forever()

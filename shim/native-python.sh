@@ -12,6 +12,10 @@ if [[ " $* " == *" ingest_ena_reads "* && -f $STATE/portal.env ]]; then
         echo "ena-shim: scope check failed" >&2
         exit 1
     }
+    # A proxy-mode shim forwards the runs it doesn't hold to ENA, so a mixed job can use it.
+    if [[ $verdict == mixed ]] && grep -qx ENA_SHIM_MODE=proxy "$STATE/portal.env"; then
+        verdict=in
+    fi
     case $verdict in
         in)
             set -a
@@ -21,6 +25,7 @@ if [[ " $* " == *" ingest_ena_reads "* && -f $STATE/portal.env ]]; then
                 echo "ena-shim: portal.env has no http:// MIINT_ENA_PORTAL_URL_BASE" >&2
                 exit 1
             }
+            export QIITA_DEV_ENA_PRIORITY_RUNS=$STATE/portal.runs
             echo "ena-shim: portal=$MIINT_ENA_PORTAL_URL_BASE" >&2
             ;;
         out) ;;

@@ -22,6 +22,7 @@ URL = "http://node1:5000/portal/api"
 STUB = """#!/bin/bash
 if [[ $1 == -I ]]; then echo "$STUB_VERDICT"; [[ $STUB_VERDICT != crash ]]; exit; fi
 { printf '%s\\n' "$@"; echo "URL=${MIINT_ENA_PORTAL_URL_BASE-unset}"; } > "$STUB_OUT"
+echo "${QIITA_DEV_ENA_PRIORITY_RUNS-unset}" > "$STUB_OUT.first"
 """
 
 
@@ -84,10 +85,10 @@ class TestWrapper(unittest.TestCase):
         self.portal_env = os.path.join(self.dir, "portal.env")
         self.out = os.path.join(self.dir, "out.txt")
 
-    def run_wrapper(self, *argv, verdict="in", env_file=URL, runs=True):
+    def run_wrapper(self, *argv, verdict="in", env_file=URL, runs=True, proxy=False):
         if env_file is not None:
             with open(self.portal_env, "w") as f:
-                f.write(f"MIINT_ENA_PORTAL_URL_BASE={env_file}\n")
+                f.write(f"MIINT_ENA_PORTAL_URL_BASE={env_file}\n" + ("ENA_SHIM_MODE=proxy\n" if proxy else ""))
         if runs:
             with open(os.path.join(self.dir, "portal.runs"), "w") as f:
                 f.write("ERR1\n")
@@ -128,6 +129,25 @@ class TestWrapper(unittest.TestCase):
     def test_mixed_scope_exits_1(self):
         p, got = self.run_wrapper(*self.JOB, verdict="mixed")
         self.assertEqual((p.returncode, got), (1, None))
+
+    def test_mixed_scope_uses_a_proxy_shim(self):
+        p, got = self.run_wrapper(*self.JOB, verdict="mixed", proxy=True)
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual(got[-2], f"URL={URL}")
+        self.assertIn(f"ena-shim: portal={URL}", p.stderr)
+
+    def test_shim_runs_go_first_only_through_the_shim(self):
+        self.run_wrapper(*self.JOB, verdict="mixed", proxy=True)
+        with open(self.out + ".first") as f:
+            self.assertEqual(f.read().strip(), os.path.join(self.dir, "portal.runs"))
+        self.run_wrapper(*self.JOB, verdict="out", proxy=True)
+        with open(self.out + ".first") as f:
+            self.assertEqual(f.read().strip(), "unset")
+
+    def test_out_of_scope_skips_a_proxy_shim(self):
+        p, got = self.run_wrapper(*self.JOB, verdict="out", proxy=True)
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual(got[-2], "URL=unset")
 
     def test_crashed_scope_check_exits_1(self):
         p, got = self.run_wrapper(*self.JOB, verdict="crash")

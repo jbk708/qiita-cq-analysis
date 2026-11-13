@@ -5,7 +5,7 @@
 #SBATCH -c 2
 #SBATCH --mem=2G
 #SBATCH -t 12:00:00
-# Usage (from the state dir, for the log): sbatch ena-shim.sbatch <manifest>
+# Usage (from the state dir, for the log): sbatch ena-shim.sbatch <manifest> [strict|proxy]
 set -euo pipefail
 
 STATE=${SHIM_STATE_DIR:-/ddn_scratch/$USER/qiita-pilot/ena-shim}
@@ -15,4 +15,4 @@ manifest=${1:?usage: sbatch ena-shim.sbatch <manifest>}
 
 exec "$PY" -I "$REPO/shim/ena_shim.py" --manifest "$manifest" \
     --audit "$STATE/$(basename "$manifest" .manifest.tsv).audit.jsonl" \
-    --env-out "$STATE/portal.env" --runs-out "$STATE/portal.runs"
+    --mode "${2:-strict}" --env-out "$STATE/portal.env" --runs-out "$STATE/portal.runs"

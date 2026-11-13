@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import csv
 import http.client
+import http.server
 import json
 import os
+import re
 import tempfile
 import threading
 import unittest
@@ -229,6 +231,82 @@ class TestSearch(Served):
         self.assertEqual(self.req("GET", "/portal/api/other")[0].status, 404)
 
 
+class FakeEna(http.server.BaseHTTPRequestHandler):
+    """Answers /search from `rows` ({run: {field: value}}); `fail` makes every request a 500."""
+
+    rows, fail, queries = {}, False, []
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        FakeEna.queries.append(qs)
+        if FakeEna.fail:
+            body, status = b"boom", 500
+        else:
+            fields = qs["fields"][0].split(",")
+            accs = re.findall(r'"([A-Za-z0-9]+)"', qs["query"][0])
+            lines = ["\t".join(fields)] + ["\t".join(FakeEna.rows[a].get(f, "") for f in fields)
+                                           for a in accs if a in FakeEna.rows]
+            body, status = ("\n".join(lines) + "\n").encode(), 200
+        self.send_response(status)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+class TestProxy(TestSearch):
+    def setUp(self):
+        FakeEna.rows = {"SRR7": {"run_accession": "SRR7", "fastq_ftp": "ftp.sra.ebi.ac.uk/vol1/fastq/SRR7_1.fastq.gz",
+                                 "fastq_bytes": "11", "fastq_md5": MD5, "library_layout": "SINGLE"}}
+        FakeEna.fail, FakeEna.queries = False, []
+        self.ena = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeEna)
+        threading.Thread(target=self.ena.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
+        self.addCleanup(self.ena.server_close)
+        self.addCleanup(self.ena.shutdown)
+        super().setUp()
+        self.stop()
+        self.server = shim.make_server(shim.load_manifest(self.manifest), self.audit, self.dir,
+                                       ena_portal=f"http://127.0.0.1:{self.ena.server_address[1]}")
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
+
+    def test_unmapped_run_is_422_naming_run(self):
+        """Proxy mode: a run neither the shim nor ENA has is a 502 naming it, not a silently short table."""
+        r, body = self.search('run_accession="ERR9"')
+        self.assertEqual(r.status, 502)
+        self.assertIn(b"ERR9", body)
+
+    def test_mixed_mapped_and_unmapped_is_422(self):
+        r, body = self.search('run_accession IN ("ERR1","SRR7","ERR9")')
+        self.assertEqual(r.status, 502)
+        self.assertIn(b"ERR9", body)
+
+    def test_unmapped_runs_come_from_ena_in_request_order(self):
+        r, body = self.search('run_accession IN ("SRR7","ERR1")')
+        self.assertEqual(r.status, 200)
+        header, rows = self.table(body)
+        self.assertEqual(header, FIELDS.split(","))
+        self.assertEqual([x["run_accession"] for x in rows], ["SRR7", "ERR1"])
+        self.assertEqual(rows[0]["fastq_ftp"], "ftp.sra.ebi.ac.uk/vol1/fastq/SRR7_1.fastq.gz")
+        self.assertTrue(rows[1]["fastq_ftp"].startswith(f"http://127.0.0.1:{self.port}/f/ERR1/1/"))
+        (q,) = FakeEna.queries
+        self.assertEqual(q["query"], ['run_accession IN ("SRR7")'])
+        self.assertEqual(q["fields"], [FIELDS])
+        self.assertEqual(self.audit_lines()[-1]["proxied"], 1)
+
+    def test_mapped_runs_never_reach_ena(self):
+        self.assertEqual(self.search('run_accession="ERR1"')[0].status, 200)
+        self.assertEqual(FakeEna.queries, [])
+
+    def test_ena_error_is_502(self):
+        FakeEna.fail = True
+        r, body = self.search('run_accession IN ("SRR7","ERR1")')
+        self.assertEqual(r.status, 502)
+        self.assertIn(b"500", body)
+
+
 class TestFiles(Served):
     path1 = "/f/ERR1/1/e1_R1_001.fastq.gz"
 
@@ -376,8 +454,27 @@ class TestMain(Env):
             p.wait(10)
         self.assertTrue(os.path.exists(env_out) and os.path.exists(runs_out))
 
-    def test_main_refuses_proxy_mode_and_bad_manifest(self):
-        self.assertNotEqual(shim.main(["--manifest", self.manifest, "--mount-root", self.dir, "--mode", "proxy"]), 0)
+    def test_main_proxy_mode_marks_env(self):
+        import subprocess
+        import sys
+        env_out = os.path.join(self.dir, "portal.env")
+        p = subprocess.Popen(
+            [sys.executable, os.path.join(os.path.dirname(__file__), "ena_shim.py"), "--manifest", self.manifest,
+             "--mount-root", self.dir, "--audit", os.path.join(self.dir, "a.audit.jsonl"), "--mode", "proxy",
+             "--env-out", env_out, "--bind", "127.0.0.1"],
+            stdout=subprocess.PIPE, text=True)
+        try:
+            p.stdout.readline()
+            with open(env_out) as f:
+                lines = f.read().split()
+            self.assertTrue(lines[0].startswith("MIINT_ENA_PORTAL_URL_BASE=http://"))
+            self.assertEqual(lines[1], "ENA_SHIM_MODE=proxy")
+        finally:
+            p.terminate()
+            p.stdout.close()
+            p.wait(10)
+
+    def test_main_refuses_bad_manifest(self):
         write_manifest(self.manifest, [dict(self.rows[0], r1_md5="")])
         self.assertNotEqual(shim.main(["--manifest", self.manifest, "--mount-root", self.dir]), 0)
 
