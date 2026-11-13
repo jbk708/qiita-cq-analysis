@@ -21,7 +21,8 @@ def main():
     a = ap.parse_args()
     with tempfile.TemporaryDirectory(dir=a.tmp_dir) as tmp:
         try:
-            count, warnings = _stage_run_reads(a.run, "http", Path(tmp) / "reads.parquet", Path(tmp), 4, 2)
+            result = _stage_run_reads(a.run, "http", Path(tmp) / "reads.parquet", Path(tmp), 4, 2)
+            count, warnings = result if isinstance(result, tuple) else (result, [])
             out = {"run": a.run, "count": count, "warnings": warnings}
         except duckdb.Error as exc:
             failure = _classify_ena_fetch_error(a.run, exc, step_name="ingest_ena_reads")
