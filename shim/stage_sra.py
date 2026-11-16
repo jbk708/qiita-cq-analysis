@@ -4,6 +4,8 @@ Usage: stage_sra.py --duckdb <miint duckdb CLI> --ext-dir <dir> --out <dir> --ma
 Each study gets <manifest-dir>/<study>.tsv once all its listed runs stage and match ENA's read_count; a study with a
 mismatch or a run SRA can't serve gets <study>.failed instead and stays on ENA. A study with either file is skipped.
 --partial keeps the runs that stage and lists the rest in <study>.skipped (for a proxy-mode shim, which sends them to ENA).
+--expected-counts takes NCBI runinfo CSV (Run, spots, spots_with_mates) for runs ENA never processed (read_count 0):
+those runs are checked against NCBI's count instead (spots_with_mates for paired runs, as only full pairs are kept).
 """
 
 from __future__ import annotations
@@ -84,7 +86,11 @@ def stage_study(a, study, wanted):
         acc = run["run_accession"]
         try:
             spots, files = stage(a.duckdb, a.ext_dir, a.out, run)
-            reason = None if count_matches(spots, run) else f"{spots} spots vs ENA read_count {run['read_count']}"
+            if acc in a.expected:
+                want = a.expected[acc][run["library_layout"] == "PAIRED"]
+                reason = None if spots == want else f"{spots} spots vs expected {want}"
+            else:
+                reason = None if count_matches(spots, run) else f"{spots} spots vs ENA read_count {run['read_count']}"
         except RuntimeError as exc:
             reason = str(exc)
         if reason:
@@ -118,8 +124,14 @@ def main(argv=None):
     p.add_argument("--out", required=True)
     p.add_argument("--manifest-dir", required=True)
     p.add_argument("--partial", action="store_true", help="stage what SRA can serve; list the rest in <study>.skipped")
+    p.add_argument("--expected-counts", help="NCBI runinfo CSV whose spot counts replace ENA's read_count")
     p.add_argument("studies", nargs="+", help="<study>:<file of its run accessions>")
     a = p.parse_args(argv)
+    a.expected = {}
+    if a.expected_counts:
+        with open(a.expected_counts, newline="") as f:
+            # (single-end count, paired count), indexed by whether the run is PAIRED
+            a.expected = {r["Run"]: (int(r["spots"]), int(r["spots_with_mates"])) for r in csv.DictReader(f)}
     os.makedirs(a.out, exist_ok=True)
     os.makedirs(a.manifest_dir, exist_ok=True)
     for spec in a.studies:

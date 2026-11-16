@@ -62,6 +62,22 @@ class TestStageStudy(unittest.TestCase):
         self.assertEqual([s.split(":")[0] for s in skipped], ["SRR2", "SRR3"])
         self.assertEqual(sorted(os.listdir(self.out)), ["SRR1_R1.fastq.gz"])
 
+    def test_expected_counts_replace_enas_read_count(self):
+        self.spots["SRR2"] = 4
+        counts = os.path.join(self.dir, "counts.csv")
+        with open(counts, "w") as f:
+            f.write("Run,spots,spots_with_mates\nSRR2,4,0\n")
+        self.main("--expected-counts", counts)
+        self.assertEqual(self.manifest_runs(), ["SRR1", "SRR2", "SRR3"])
+
+    def test_expected_counts_still_fail_a_short_run(self):
+        counts = os.path.join(self.dir, "counts.csv")
+        with open(counts, "w") as f:
+            f.write("Run,spots,spots_with_mates\nSRR2,9,9\n")
+        self.main("--expected-counts", counts)
+        with open(os.path.join(self.mdir, "PRJ1.failed")) as f:
+            self.assertIn("SRR2: 4 spots vs expected 9", f.read())
+
     def test_partial_with_no_good_run_fails_the_study(self):
         self.spots["SRR1"] = self.spots["SRR3"] = 1
         self.main("--partial")
